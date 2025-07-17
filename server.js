@@ -143,48 +143,28 @@ app.post("/admin-login", async (req, res) => {
     }
 });
 
-// --- ROTAS DE CONTEÚDO (AGORA COM MOCK DATA) ---
-// A função getContent foi modificada para retornar dados simulados
+// --- ROTAS DE CONTEÚDO (AGORA COM AIRTABLE) ---
+// A função getContent foi revertida para se comunicar com o Airtable
 const getContent = async (res, tableName, fieldMapping) => {
-  // Dados simulados para cada tipo de conteúdo
-  const mockData = {
-    'Conteudo Educativo': [
-      { id: 'mock1', titulo: 'Biogás para Iniciantes', conteudo: 'O biogás é uma fonte de energia renovável produzida a partir da decomposição de matéria orgânica. É uma alternativa sustentável para a produção de energia em pequenas propriedades.', imageUrl: 'https://placehold.co/400x200/ADD8E6/000000?text=Biogas+Intro' },
-      { id: 'mock2', titulo: 'Vantagens do Biodigestor', conteudo: 'Além de gerar energia, o biodigestor produz biofertilizante, reduz odores e diminui a poluição ambiental. Ideal para uso rural.', imageUrl: 'https://placehold.co/400x200/90EE90/000000?text=Biodigestor+Vantagens' },
-      { id: 'mock3', titulo: 'Manutenção de Biodigestores', conteudo: 'A manutenção regular garante a eficiência do biodigestor. Verifique vazamentos, temperatura e pH do material.', imageUrl: 'https://placehold.co/400x200/FFD700/000000?text=Manutencao' },
-    ],
-    'Quizzes': [
-      { id: 'mockQ1', Title: 'Quiz Básico de Biogás', Perguntas: JSON.stringify([
-        { question: 'Qual o principal gás do biogás?', options: ['Oxigênio', 'Metano', 'Nitrogênio', 'Dióxido de Carbono'], correct: 1 },
-        { question: 'De onde vem a matéria orgânica para o biogás?', options: ['Plástico', 'Metais', 'Resíduos animais e vegetais', 'Pedras'], correct: 2 }
-      ])},
-      { id: 'mockQ2', Title: 'Quiz Avançado de Biodigestores', Perguntas: JSON.stringify([
-        { question: 'Qual o processo de produção do biogás?', options: ['Combustão', 'Fermentação aeróbica', 'Digestão anaeróbica', 'Fissão nuclear'], correct: 2 },
-        { question: 'Qual subproduto do biodigestor pode ser usado na agricultura?', options: ['Gás natural', 'Biofertilizante', 'Ácido sulfúrico', 'Água potável'], correct: 1 }
-      ])},
-    ],
-    'Checklists': [
-      { id: 'mockC1', titulo: 'Checklist de Montagem Simples', items: JSON.stringify([
-        'Coletar materiais', 'Escavar o fosso', 'Instalar o tanque', 'Conectar tubulações', 'Adicionar matéria orgânica'
-      ])},
-      { id: 'mockC2', titulo: 'Checklist de Segurança', items: JSON.stringify([
-        'Verificar vazamentos de gás', 'Usar EPIs', 'Manter área ventilada', 'Não fumar próximo ao biodigestor'
-      ])},
-    ],
-    'Simulations': [
-        { id: 'mockS1', titulo: 'Simulação de Produção Padrão', description: 'Simulação de um sistema de 10m³ com esterco bovino.' },
-        { id: 'mockS2', titulo: 'Simulação de Pequena Propriedade', description: 'Cálculo de biogás para uma fazenda com 50 animais.' },
-    ]
-  };
-
   try {
-    // Retorna os dados simulados
-    const data = mockData[tableName] || [];
+    console.log(`DEBUG GET CONTENT: Chamando Airtable para ${tableName}`); // DEBUG
+    console.log("DEBUG GET CONTENT: AIRTABLE_API_KEY:", AIRTABLE_API_KEY ? "Presente" : "Ausente"); // DEBUG
+    console.log("DEBUG GET CONTENT: AIRTABLE_BASE_ID:", AIRTABLE_BASE_ID); // DEBUG
+    const airtableContentUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${tableName}`;
+    console.log("DEBUG GET CONTENT: Airtable URL:", airtableContentUrl); // DEBUG
+    console.log("DEBUG GET CONTENT: Com Headers:", getAirtableHeaders()); // DEBUG
+
+    const response = await axios.get(
+      airtableContentUrl,
+      { headers: getAirtableHeaders() } // Usando a função auxiliar
+    );
+    const data = response.data.records.map(record => fieldMapping(record));
     res.status(200).json({ success: true, data });
   } catch (error) {
-    // Este catch é mais para erros inesperados na lógica do mock, não de API externa
-    console.error(`Erro ao obter dados de ${tableName} (mock):`, error.message);
-    res.status(500).json({ success: false, error: `Erro interno ao obter dados de ${tableName}.` });
+    console.error(`Erro ao obter dados de ${tableName}:`, error.response?.data || error.message); // Adicionado log de erro
+    console.error(`DEBUG GET CONTENT: Erro DETALHADO para ${tableName}:`, error); // DEBUG
+    console.error(`DEBUG GET CONTENT: Dados da resposta do erro para ${tableName} (se houver):`, error.response?.data); // DEBUG
+    res.status(500).json({ success: false, error: `Erro ao obter dados de ${tableName}.` });
   }
 };
 
@@ -206,7 +186,7 @@ app.get("/content/quizzes", (req, res) => getContent(res, 'Quizzes', record => {
                 questions = parsedQuestions.filter(q => q && typeof q.question === 'string' && q.question.trim() !== '' && Array.isArray(q.options) && q.options.length > 0 && q.options.every(opt => typeof opt === 'string' && opt.trim() !== ''));
             }
         }
-    } catch (e) { console.error("Erro JSON no quiz (mock):", record.id); }
+    } catch (e) { console.error("Erro JSON no quiz:", record.id); }
     return { id: record.id, title: record.fields.Title, questions };
 }));
 
@@ -216,15 +196,33 @@ app.get("/content/checklists", (req, res) => getContent(res, 'Checklists', recor
         if (record.fields.items) {
             items = JSON.parse(record.fields.items);
         }
-    } catch (e) { console.error("Erro JSON no checklist (mock):", record.id); }
+    } catch (e) { console.error("Erro JSON no checklist:", record.id); }
     return { id: record.id, title: record.fields.titulo, items };
 }));
 
-// As rotas POST, PATCH, DELETE para conteúdo não serão funcionais com mock data
-// Elas ainda estão aqui, mas não persistirão dados.
+// As rotas POST, PATCH, DELETE para conteúdo foram revertidas para se comunicar com o Airtable
 const postToAirtable = async (res, tableName, fieldsToPost) => {
-  console.log(`AVISO: Tentativa de POST para ${tableName} com mock data. Dados não serão persistidos.`);
-  res.status(200).send({ success: true, recordId: `mock_new_${Date.now()}` });
+  try {
+    console.log(`DEBUG POST AIRTABLE: Chamando Airtable para ${tableName}`); // DEBUG
+    console.log("DEBUG POST AIRTABLE: AIRTABLE_API_KEY:", AIRTABLE_API_KEY ? "Presente" : "Ausente"); // DEBUG
+    console.log("DEBUG POST AIRTABLE: AIRTABLE_BASE_ID:", AIRTABLE_BASE_ID); // DEBUG
+    const airtablePostUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${tableName}`;
+    console.log("DEBUG POST AIRTABLE: Airtable URL:", airtablePostUrl); // DEBUG
+    console.log("DEBUG POST AIRTABLE: Com Headers:", getAirtableHeaders()); // DEBUG
+    console.log("DEBUG POST AIRTABLE: Body:", fieldsToPost); // DEBUG
+
+    const response = await axios.post(
+      airtablePostUrl,
+      { fields: fieldsToPost },
+      { headers: getAirtableHeaders() } // Usando a função auxiliar
+    );
+    res.status(200).send({ success: true, recordId: response.data.id });
+  } catch (error) {
+    console.error(`Erro ao criar em ${tableName}:`, error.response?.data || error.message);
+    console.error(`DEBUG POST AIRTABLE: Erro DETALHADO para ${tableName}:`, error); // DEBUG
+    console.error(`DEBUG POST AIRTABLE: Dados da resposta do erro para ${tableName} (se houver):`, error.response?.data); // DEBUG
+    res.status(500).send({ error: `Erro ao criar em ${tableName}.`, details: error.response?.data || error.message });
+  }
 };
 
 app.post("/content/educational-texts", (req, res) => {
@@ -256,8 +254,30 @@ app.post("/content/checklists", (req, res) => {
 });
 
 const patchContent = async (res, tableName, id, fieldsToUpdate) => {
-  console.log(`AVISO: Tentativa de PATCH para ${tableName}/${id} com mock data. Dados não serão persistidos.`);
-  res.status(200).send({ success: true, data: fieldsToUpdate });
+  if (Object.keys(fieldsToUpdate).length === 0) {
+    return res.status(400).send({ error: "Nenhum campo para atualizar." });
+  }
+  try {
+    console.log(`DEBUG PATCH AIRTABLE: Chamando Airtable para ${tableName}/${id}`); // DEBUG
+    console.log("DEBUG PATCH AIRTABLE: AIRTABLE_API_KEY:", AIRTABLE_API_KEY ? "Presente" : "Ausente"); // DEBUG
+    console.log("DEBUG PATCH AIRTABLE: AIRTABLE_BASE_ID:", AIRTABLE_BASE_ID); // DEBUG
+    const airtablePatchUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${tableName}/${id}`;
+    console.log("DEBUG PATCH AIRTABLE: Airtable URL:", airtablePatchUrl); // DEBUG
+    console.log("DEBUG PATCH AIRTABLE: Com Headers:", getAirtableHeaders()); // DEBUG
+    console.log("DEBUG PATCH AIRTABLE: Body:", fieldsToUpdate); // DEBUG
+
+    const response = await axios.patch(
+      airtablePatchUrl,
+      { fields: fieldsToUpdate },
+      { headers: getAirtableHeaders() } // Usando a função auxiliar
+    );
+    res.status(200).send({ success: true, data: response.data.fields });
+  } catch (error) {
+    console.error(`Erro ao atualizar em ${tableName}:`, error.response?.data || error.message);
+    console.error(`DEBUG PATCH AIRTABLE: Erro DETALHADO para ${tableName}:`, error); // DEBUG
+    console.error(`DEBUG PATCH AIRTABLE: Dados da resposta do erro para ${tableName} (se houver):`, error.response?.data); // DEBUG
+    res.status(500).send({ error: `Erro ao atualizar em ${tableName}.`, details: error.response?.data || error.message });
+  }
 };
 
 app.patch("/content/educational-texts/:id", (req, res) => {
@@ -290,8 +310,25 @@ app.patch("/content/checklists/:id", (req, res) => {
 });
 
 const deleteRecord = async (tableName, id, res) => {
-  console.log(`AVISO: Tentativa de DELETE para ${tableName}/${id} com mock data. Dados não serão removidos.`);
-  res.status(200).send({ success: true });
+  try {
+    console.log(`DEBUG DELETE AIRTABLE: Chamando Airtable para ${tableName}/${id}`); // DEBUG
+    console.log("DEBUG DELETE AIRTABLE: AIRTABLE_API_KEY:", AIRTABLE_API_KEY ? "Presente" : "Ausente"); // DEBUG
+    console.log("DEBUG DELETE AIRTABLE: AIRTABLE_BASE_ID:", AIRTABLE_BASE_ID); // DEBUG
+    const airtableDeleteUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${tableName}/${id}`;
+    console.log("DEBUG DELETE AIRTABLE: Airtable URL:", airtableDeleteUrl); // DEBUG
+    console.log("DEBUG DELETE AIRTABLE: Com Headers:", getAirtableHeaders()); // DEBUG
+
+    await axios.delete(
+      airtableDeleteUrl,
+      { headers: getAirtableHeaders() } // Usando a função auxiliar
+    );
+    res.status(200).send({ success: true });
+  } catch (error) {
+    console.error(`Erro ao excluir em ${tableName}:`, error.response?.data || error.message); // Adicionado log de erro
+    console.error(`DEBUG DELETE AIRTABLE: Erro DETALHADO para ${tableName}:`, error); // DEBUG
+    console.error(`DEBUG DELETE AIRTABLE: Dados da resposta do erro para ${tableName} (se houver):`, error.response?.data); // DEBUG
+    res.status(500).send({ error: "Erro ao excluir." });
+  }
 };
 
 app.delete("/content/quizzes/:id", (req, res) => deleteRecord('Quizzes', req.params.id, res));
