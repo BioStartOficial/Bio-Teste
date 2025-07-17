@@ -2,6 +2,10 @@ import express from 'express';
 import axios from 'axios';
 import cors from 'cors';
 
+// Importações do Firebase
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+
 const app = express();
 
 // Middleware para habilitar CORS para todas as requisições
@@ -13,10 +17,27 @@ const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
+// --- CONFIGURAÇÃO DO FIREBASE (PARA CONTEÚDO) ---
+// Substitua com suas credenciais do Firebase. Você precisará criar um projeto no Firebase.
+// Vá em Projeto -> Configurações do Projeto -> Seus Apps -> Web (</>) -> Configuração
+const firebaseConfig = {
+  apiKey: process.env.FIREBASE_API_KEY, // Você precisará adicionar esta variável no Render
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN, // Você precisará adicionar esta variável no Render
+  projectId: process.env.FIREBASE_PROJECT_ID, // Você precisará adicionar esta variável no Render
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET, // Você precisará adicionar esta variável no Render
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID, // Você precisará adicionar esta variável no Render
+  appId: process.env.FIREBASE_APP_ID // Você precisará adicionar esta variável no Render
+};
+
+// Inicializa o Firebase
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+
 // Log para verificar se as chaves foram carregadas
 console.log("Backend Init: AIRTABLE_BASE_ID carregado:", AIRTABLE_BASE_ID ? "Sim" : "Não");
 console.log("Backend Init: AIRTABLE_API_KEY carregado:", AIRTABLE_API_KEY ? "Sim" : "Não");
 console.log("Backend Init: GEMINI_API_KEY carregado:", GEMINI_API_KEY ? "Sim" : "Não");
+console.log("Backend Init: FIREBASE_PROJECT_ID carregado:", firebaseConfig.projectId ? "Sim" : "Não"); // DEBUG FIREBASE
 
 // --- Rota de Teste (GET /) ---
 app.get('/', (req, res) => {
@@ -25,14 +46,13 @@ app.get('/', (req, res) => {
 });
 
 // --- Função auxiliar para cabeçalhos Airtable ---
-// Esta função centraliza os cabeçalhos necessários para todas as requisições Airtable.
 const getAirtableHeaders = () => ({
   Authorization: `Bearer ${AIRTABLE_API_KEY}`,
   'Content-Type': 'application/json',
   'Accept': 'application/json'
 });
 
-// --- ROTAS DE AUTENTICAÇÃO (Utilizador e Admin) ---
+// --- ROTAS DE AUTENTICAÇÃO (Utilizador e Admin) - AINDA COM AIRTABLE ---
 app.post("/registro", async (req, res) => {
   const { name, email, password, age, regionCity, profession, renewableEnergyExperience, acceptTerms } = req.body;
   if (!name || !email || !password || !age || !regionCity) {
@@ -66,7 +86,6 @@ app.post("/login", async (req, res) => {
     return res.status(400).send({ error: "Por favor, insira o email e a senha." });
   }
   try {
-    // Adicionado logs detalhados para depuração da chamada Airtable no login
     console.log("Tentando login para email:", email);
     const airtableLoginUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/Utilizadores?filterByFormula=AND({Email}='${email}',{Senha (Hash)}='${password}')&maxRecords=1`;
     console.log("DEBUG LOGIN: Chamando Airtable URL:", airtableLoginUrl); // DEBUG
@@ -88,7 +107,7 @@ app.post("/login", async (req, res) => {
       res.status(401).send({ error: "Email ou senha incorretos." });
     }
   } catch (err) {
-    console.error("Backend: Erro DETALHADO no login de utilizador:", err); // Loga o objeto 'err' completo
+    console.error("Backend: Erro DETALHADO no login de utilizador:", err);
     console.error("Mensagem do erro:", err.message);
     console.error("Dados da resposta do erro (se houver):", err.response?.data);
     res.status(500).send({ error: "Erro ao fazer login", details: err.response?.data || err.message });
@@ -143,32 +162,114 @@ app.post("/admin-login", async (req, res) => {
     }
 });
 
-// --- ROTAS DE CONTEÚDO (AGORA COM AIRTABLE) ---
-// A função getContent foi revertida para se comunicar com o Airtable
-const getContent = async (res, tableName, fieldMapping) => {
-  try {
-    console.log(`DEBUG GET CONTENT: Chamando Airtable para ${tableName}`); // DEBUG
-    console.log("DEBUG GET CONTENT: AIRTABLE_API_KEY:", AIRTABLE_API_KEY ? "Presente" : "Ausente"); // DEBUG
-    console.log("DEBUG GET CONTENT: AIRTABLE_BASE_ID:", AIRTABLE_BASE_ID); // DEBUG
-    const airtableContentUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${tableName}`;
-    console.log("DEBUG GET CONTENT: Airtable URL:", airtableContentUrl); // DEBUG
-    console.log("DEBUG GET CONTENT: Com Headers:", getAirtableHeaders()); // DEBUG
-
-    const response = await axios.get(
-      airtableContentUrl,
-      { headers: getAirtableHeaders() } // Usando a função auxiliar
-    );
-    const data = response.data.records.map(record => fieldMapping(record));
-    res.status(200).json({ success: true, data });
-  } catch (error) {
-    console.error(`Erro ao obter dados de ${tableName}:`, error.response?.data || error.message); // Adicionado log de erro
-    console.error(`DEBUG GET CONTENT: Erro DETALHADO para ${tableName}:`, error); // DEBUG
-    console.error(`DEBUG GET CONTENT: Dados da resposta do erro para ${tableName} (se houver):`, error.response?.data); // DEBUG
-    res.status(500).json({ success: false, error: `Erro ao obter dados de ${tableName}.` });
+// --- ROTAS DE CONTEÚDO (AGORA COM FIRESTORE) ---
+// Função auxiliar para mapear nomes de tabelas para coleções Firestore
+const getFirestoreCollectionName = (tableName) => {
+  switch (tableName) {
+    case 'Conteudo Educativo': return 'educational_texts';
+    case 'Quizzes': return 'quizzes';
+    case 'Checklists': return 'checklists';
+    // Adicione outros casos conforme necessário
+    default: return tableName.toLowerCase().replace(/\s/g, '_'); // Converte para snake_case
   }
 };
 
-app.get("/content/educational-texts", (req, res) => getContent(res, 'Conteudo Educativo', record => ({
+// Função para obter dados do Firestore
+const getFirestoreContent = async (res, tableName, fieldMapping) => {
+  try {
+    const collectionRef = collection(db, getFirestoreCollectionName(tableName));
+    console.log(`DEBUG GET FIRESTORE: Chamando Firestore para coleção: ${getFirestoreCollectionName(tableName)}`); // DEBUG
+    const snapshot = await getDocs(collectionRef);
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Mapeamento de campos para o formato esperado pelo frontend
+    const mappedData = data.map(item => {
+        const mappedItem = fieldMapping({ id: item.id, fields: item });
+        // Ajustes específicos para Quizzes e Checklists ao ler do Firestore
+        if (tableName === 'Quizzes' && item.Perguntas) {
+            mappedItem.questions = JSON.parse(item.Perguntas);
+        }
+        if (tableName === 'Checklists' && item.items) {
+            mappedItem.items = JSON.parse(item.items);
+        }
+        return mappedItem;
+    });
+
+    res.status(200).json({ success: true, data: mappedData });
+  } catch (error) {
+    console.error(`Erro ao obter dados de ${tableName} (Firestore):`, error);
+    res.status(500).json({ success: false, error: `Erro ao obter dados de ${tableName} (Firestore).` });
+  }
+};
+
+// Função para adicionar dados ao Firestore
+const postToFirestore = async (res, tableName, fieldsToPost) => {
+  try {
+    const collectionRef = collection(db, getFirestoreCollectionName(tableName));
+    console.log(`DEBUG POST FIRESTORE: Adicionando documento à coleção: ${getFirestoreCollectionName(tableName)}`); // DEBUG
+
+    // Ajustes específicos para Quizzes e Checklists ao salvar no Firestore
+    const dataToSave = { ...fieldsToPost };
+    if (tableName === 'Quizzes' && dataToSave.questions) {
+        dataToSave.Perguntas = JSON.stringify(dataToSave.questions);
+        delete dataToSave.questions;
+    }
+    if (tableName === 'Checklists' && dataToSave.items) {
+        dataToSave.items = JSON.stringify(dataToSave.items);
+        delete dataToSave.items;
+    }
+    
+    const docRef = await addDoc(collectionRef, dataToSave);
+    res.status(200).send({ success: true, recordId: docRef.id });
+  } catch (error) {
+    console.error(`Erro ao criar em ${tableName} (Firestore):`, error);
+    res.status(500).send({ error: `Erro ao criar em ${tableName} (Firestore).`, details: error.message });
+  }
+};
+
+// Função para atualizar dados no Firestore
+const patchFirestoreContent = async (res, tableName, id, fieldsToUpdate) => {
+  if (Object.keys(fieldsToUpdate).length === 0) {
+    return res.status(400).send({ error: "Nenhum campo para atualizar." });
+  }
+  try {
+    const docRef = doc(db, getFirestoreCollectionName(tableName), id);
+    console.log(`DEBUG PATCH FIRESTORE: Atualizando documento ${id} na coleção: ${getFirestoreCollectionName(tableName)}`); // DEBUG
+
+    // Ajustes específicos para Quizzes e Checklists ao atualizar no Firestore
+    const dataToUpdate = { ...fieldsToUpdate };
+    if (tableName === 'Quizzes' && dataToUpdate.questions) {
+        dataToUpdate.Perguntas = JSON.stringify(dataToUpdate.questions);
+        delete dataToUpdate.questions;
+    }
+    if (tableName === 'Checklists' && dataToUpdate.items) {
+        dataToUpdate.items = JSON.stringify(dataToUpdate.items);
+        delete dataToUpdate.items;
+    }
+
+    await updateDoc(docRef, dataToUpdate);
+    res.status(200).send({ success: true, data: dataToUpdate });
+  } catch (error) {
+    console.error(`Erro ao atualizar em ${tableName} (Firestore):`, error);
+    res.status(500).send({ error: `Erro ao atualizar em ${tableName} (Firestore).`, details: error.message });
+  }
+};
+
+// Função para deletar dados no Firestore
+const deleteFirestoreRecord = async (tableName, id, res) => {
+  try {
+    const docRef = doc(db, getFirestoreCollectionName(tableName), id);
+    console.log(`DEBUG DELETE FIRESTORE: Deletando documento ${id} da coleção: ${getFirestoreCollectionName(tableName)}`); // DEBUG
+    await deleteDoc(docRef);
+    res.status(200).send({ success: true });
+  } catch (error) {
+    console.error(`Erro ao excluir em ${tableName} (Firestore):`, error);
+    res.status(500).send({ error: "Erro ao excluir (Firestore)." });
+  }
+};
+
+
+app.get("/content/educational-texts", (req, res) => getFirestoreContent(res, 'Conteudo Educativo', record => ({
   id: record.id,
   title: record.fields.titulo,
   content: record.fields.conteudo,
@@ -177,53 +278,28 @@ app.get("/content/educational-texts", (req, res) => getContent(res, 'Conteudo Ed
   image: record.fields.imageUrl || null,
 })));
 
-app.get("/content/quizzes", (req, res) => getContent(res, 'Quizzes', record => {
+app.get("/content/quizzes", (req, res) => getFirestoreContent(res, 'Quizzes', record => {
     let questions = [];
     try {
-        if (record.fields.Perguntas) {
+        if (record.fields.Perguntas) { // No Firestore, 'Perguntas' será uma string JSON
             const parsedQuestions = JSON.parse(record.fields.Perguntas);
             if (Array.isArray(parsedQuestions)) {
                 questions = parsedQuestions.filter(q => q && typeof q.question === 'string' && q.question.trim() !== '' && Array.isArray(q.options) && q.options.length > 0 && q.options.every(opt => typeof opt === 'string' && opt.trim() !== ''));
             }
         }
-    } catch (e) { console.error("Erro JSON no quiz:", record.id); }
+    } catch (e) { console.error("Erro JSON no quiz (Firestore):", record.id, e); }
     return { id: record.id, title: record.fields.Title, questions };
 }));
 
-app.get("/content/checklists", (req, res) => getContent(res, 'Checklists', record => {
+app.get("/content/checklists", (req, res) => getFirestoreContent(res, 'Checklists', record => {
     let items = [];
     try {
-        if (record.fields.items) {
+        if (record.fields.items) { // No Firestore, 'items' será uma string JSON
             items = JSON.parse(record.fields.items);
         }
-    } catch (e) { console.error("Erro JSON no checklist:", record.id); }
+    } catch (e) { console.error("Erro JSON no checklist (Firestore):", record.id, e); }
     return { id: record.id, title: record.fields.titulo, items };
 }));
-
-// As rotas POST, PATCH, DELETE para conteúdo foram revertidas para se comunicar com o Airtable
-const postToAirtable = async (res, tableName, fieldsToPost) => {
-  try {
-    console.log(`DEBUG POST AIRTABLE: Chamando Airtable para ${tableName}`); // DEBUG
-    console.log("DEBUG POST AIRTABLE: AIRTABLE_API_KEY:", AIRTABLE_API_KEY ? "Presente" : "Ausente"); // DEBUG
-    console.log("DEBUG POST AIRTABLE: AIRTABLE_BASE_ID:", AIRTABLE_BASE_ID); // DEBUG
-    const airtablePostUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${tableName}`;
-    console.log("DEBUG POST AIRTABLE: Airtable URL:", airtablePostUrl); // DEBUG
-    console.log("DEBUG POST AIRTABLE: Com Headers:", getAirtableHeaders()); // DEBUG
-    console.log("DEBUG POST AIRTABLE: Body:", fieldsToPost); // DEBUG
-
-    const response = await axios.post(
-      airtablePostUrl,
-      { fields: fieldsToPost },
-      { headers: getAirtableHeaders() } // Usando a função auxiliar
-    );
-    res.status(200).send({ success: true, recordId: response.data.id });
-  } catch (error) {
-    console.error(`Erro ao criar em ${tableName}:`, error.response?.data || error.message);
-    console.error(`DEBUG POST AIRTABLE: Erro DETALHADO para ${tableName}:`, error); // DEBUG
-    console.error(`DEBUG POST AIRTABLE: Dados da resposta do erro para ${tableName} (se houver):`, error.response?.data); // DEBUG
-    res.status(500).send({ error: `Erro ao criar em ${tableName}.`, details: error.response?.data || error.message });
-  }
-};
 
 app.post("/content/educational-texts", (req, res) => {
   const { title, content, annexUrl } = req.body;
@@ -232,7 +308,7 @@ app.post("/content/educational-texts", (req, res) => {
   }
   const fields = { titulo: title, conteudo: content };
   if (annexUrl) fields.imageUrl = annexUrl;
-  postToAirtable(res, 'Conteudo Educativo', fields);
+  postToFirestore(res, 'Conteudo Educativo', fields);
 });
 
 app.post("/content/quizzes", (req, res) => {
@@ -240,8 +316,8 @@ app.post("/content/quizzes", (req, res) => {
   if (!title || !questions || !Array.isArray(questions) || questions.length === 0) {
       return res.status(400).send({ error: "Título e pelo menos uma pergunta são obrigatórios." });
   }
-  const fields = { 'Title': title, 'Perguntas': JSON.stringify(questions) };
-  postToAirtable(res, 'Quizzes', fields);
+  const fields = { 'Title': title, 'questions': questions }; // 'questions' será stringified em postToFirestore
+  postToFirestore(res, 'Quizzes', fields);
 });
 
 app.post("/content/checklists", (req, res) => {
@@ -249,36 +325,9 @@ app.post("/content/checklists", (req, res) => {
   if (!title || !items || !Array.isArray(items)) {
       return res.status(400).send({ error: "Título e itens são obrigatórios." });
   }
-  const fields = { 'titulo': title, 'items': JSON.stringify(items) };
-  postToAirtable(res, 'Checklists', fields);
+  const fields = { 'titulo': title, 'items': items }; // 'items' será stringified em postToFirestore
+  postToFirestore(res, 'Checklists', fields);
 });
-
-const patchContent = async (res, tableName, id, fieldsToUpdate) => {
-  if (Object.keys(fieldsToUpdate).length === 0) {
-    return res.status(400).send({ error: "Nenhum campo para atualizar." });
-  }
-  try {
-    console.log(`DEBUG PATCH AIRTABLE: Chamando Airtable para ${tableName}/${id}`); // DEBUG
-    console.log("DEBUG PATCH AIRTABLE: AIRTABLE_API_KEY:", AIRTABLE_API_KEY ? "Presente" : "Ausente"); // DEBUG
-    console.log("DEBUG PATCH AIRTABLE: AIRTABLE_BASE_ID:", AIRTABLE_BASE_ID); // DEBUG
-    const airtablePatchUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${tableName}/${id}`;
-    console.log("DEBUG PATCH AIRTABLE: Airtable URL:", airtablePatchUrl); // DEBUG
-    console.log("DEBUG PATCH AIRTABLE: Com Headers:", getAirtableHeaders()); // DEBUG
-    console.log("DEBUG PATCH AIRTABLE: Body:", fieldsToUpdate); // DEBUG
-
-    const response = await axios.patch(
-      airtablePatchUrl,
-      { fields: fieldsToUpdate },
-      { headers: getAirtableHeaders() } // Usando a função auxiliar
-    );
-    res.status(200).send({ success: true, data: response.data.fields });
-  } catch (error) {
-    console.error(`Erro ao atualizar em ${tableName}:`, error.response?.data || error.message);
-    console.error(`DEBUG PATCH AIRTABLE: Erro DETALHADO para ${tableName}:`, error); // DEBUG
-    console.error(`DEBUG PATCH AIRTABLE: Dados da resposta do erro para ${tableName} (se houver):`, error.response?.data); // DEBUG
-    res.status(500).send({ error: `Erro ao atualizar em ${tableName}.`, details: error.response?.data || error.message });
-  }
-};
 
 app.patch("/content/educational-texts/:id", (req, res) => {
   const { title, content, annexUrl } = req.body;
@@ -286,7 +335,7 @@ app.patch("/content/educational-texts/:id", (req, res) => {
   if (title) fields.titulo = title;
   if (content) fields.conteudo = content;
   if (annexUrl !== undefined) fields.imageUrl = annexUrl;
-  patchContent(res, 'Conteudo Educativo', req.params.id, fields);
+  patchFirestoreContent(res, 'Conteudo Educativo', req.params.id, fields);
 });
 
 app.patch("/content/quizzes/:id", (req, res) => {
@@ -294,9 +343,9 @@ app.patch("/content/quizzes/:id", (req, res) => {
   const fields = {};
   if (title) fields.Title = title;
   if (questions && Array.isArray(questions)) {
-    fields.Perguntas = JSON.stringify(questions);
+    fields.questions = questions; // 'questions' será stringified em patchFirestoreContent
   }
-  patchContent(res, 'Quizzes', req.params.id, fields);
+  patchFirestoreContent(res, 'Quizzes', req.params.id, fields);
 });
 
 app.patch("/content/checklists/:id", (req, res) => {
@@ -304,39 +353,16 @@ app.patch("/content/checklists/:id", (req, res) => {
   const fields = {};
   if (title) fields.titulo = title;
   if (items && Array.isArray(items)) {
-    fields.items = JSON.stringify(items);
+    fields.items = items; // 'items' será stringified em patchFirestoreContent
   }
-  patchContent(res, 'Checklists', req.params.id, fields);
+  patchFirestoreContent(res, 'Checklists', req.params.id, fields);
 });
 
-const deleteRecord = async (tableName, id, res) => {
-  try {
-    console.log(`DEBUG DELETE AIRTABLE: Chamando Airtable para ${tableName}/${id}`); // DEBUG
-    console.log("DEBUG DELETE AIRTABLE: AIRTABLE_API_KEY:", AIRTABLE_API_KEY ? "Presente" : "Ausente"); // DEBUG
-    console.log("DEBUG DELETE AIRTABLE: AIRTABLE_BASE_ID:", AIRTABLE_BASE_ID); // DEBUG
-    const airtableDeleteUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${tableName}/${id}`;
-    console.log("DEBUG DELETE AIRTABLE: Airtable URL:", airtableDeleteUrl); // DEBUG
-    console.log("DEBUG DELETE AIRTABLE: Com Headers:", getAirtableHeaders()); // DEBUG
+app.delete("/content/quizzes/:id", (req, res) => deleteFirestoreRecord('Quizzes', req.params.id, res));
+app.delete("/content/educational-texts/:id", (req, res) => deleteFirestoreRecord('Conteudo Educativo', req.params.id, res));
+app.delete("/content/checklists/:id", (req, res) => deleteFirestoreRecord('Checklists', req.params.id, res));
 
-    await axios.delete(
-      airtableDeleteUrl,
-      { headers: getAirtableHeaders() } // Usando a função auxiliar
-    );
-    res.status(200).send({ success: true });
-  } catch (error) {
-    console.error(`Erro ao excluir em ${tableName}:`, error.response?.data || error.message); // Adicionado log de erro
-    console.error(`DEBUG DELETE AIRTABLE: Erro DETALHADO para ${tableName}:`, error); // DEBUG
-    console.error(`DEBUG DELETE AIRTABLE: Dados da resposta do erro para ${tableName} (se houver):`, error.response?.data); // DEBUG
-    res.status(500).send({ error: "Erro ao excluir." });
-  }
-};
-
-app.delete("/content/quizzes/:id", (req, res) => deleteRecord('Quizzes', req.params.id, res));
-app.delete("/content/educational-texts/:id", (req, res) => deleteRecord('Conteudo Educativo', req.params.id, res));
-app.delete("/content/checklists/:id", (req, res) => deleteRecord('Checklists', req.params.id, res));
-
-// --- NOVAS ROTAS PARA O CHECKLIST DO UTILIZADOR (AINDA COM AIRTABLE) ---
-// Estas rotas ainda tentam se comunicar com o Airtable
+// --- ROTAS DO CHECKLIST DO UTILIZADOR (AINDA COM AIRTABLE) ---
 app.get("/user/:userId/checklist", async (req, res) => {
     const { userId } = req.params;
     try {
@@ -392,7 +418,6 @@ const callGeminiAPI = async (prompt) => {
     if (!GEMINI_API_KEY) {
         throw new Error("A chave da API do Gemini não está configurada no servidor.");
     }
-    // Alterado o modelo para gemini-1.0-pro para maior compatibilidade
     console.log("DEBUG GEMINI: GEMINI_API_KEY:", GEMINI_API_KEY ? "Presente" : "Ausente"); // DEBUG
     const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`; // Alterado para gemini-2.0-flash
     console.log("DEBUG GEMINI: Gemini API URL:", API_URL); // DEBUG
