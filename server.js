@@ -2,7 +2,7 @@ import express from 'express';
 import axios from 'axios';
 import cors from 'cors';
 
-const app = express(); // <--- AQUI ESTÁ A DEFINIÇÃO CORRETA DE 'app'
+const app = express();
 
 // Middleware para habilitar CORS para todas as requisições
 app.use(cors());
@@ -357,7 +357,7 @@ const callGeminiAPI = async (prompt) => {
     }
     // Alterado o modelo para gemini-1.0-pro para maior compatibilidade
     console.log("DEBUG GEMINI: GEMINI_API_KEY:", GEMINI_API_KEY ? "Presente" : "Ausente"); // DEBUG
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.0-pro:generateContent?key=${GEMINI_API_KEY}`;
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`; // Alterado para gemini-2.0-flash
     console.log("DEBUG GEMINI: Gemini API URL:", API_URL); // DEBUG
     const payload = { contents: [{ parts: [{ text: prompt }] }] };
     console.log("DEBUG GEMINI: Payload:", payload); // DEBUG
