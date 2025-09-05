@@ -31,13 +31,13 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // --- CONFIGURAÇÃO DO FIREBASE ---
 const firebaseConfig = {
-  apiKey: "AIzaSyCEaYzUKbhJnSh4CdQR1HXtIIegIaQIvUs",
-  authDomain: "biostart-2144b.firebaseapp.com",
-  projectId: "biostart-2144b",
-  storageBucket: "biostart-2144b.firebasestorage.app",
-  messagingSenderId: "922515880132",
-  appId: "1:922515880132:web:cf78a52d87cc01235a3191",
-  measurementId: "G-J77JVXYD08",
+  apiKey: "AIzaSyBrMuzqOYVRwwis_66kq8KHRj8ajUw4Dtc",
+  authDomain: "biostart-94b25.firebaseapp.com",
+  projectId: "biostart-94b25",
+  storageBucket: "biostart-94b25.firebasestorage.app",
+  messagingSenderId: "787786914858",
+  appId: "1:787786914858:web:78e7ae30b4b74bf9da7753",
+  measurementId: "G-K93G8PK18N",
 };
 
 // Inicializa o Firebase
@@ -65,12 +65,10 @@ console.log(
 // --- Rota de Teste (GET /) ---
 app.get("/", (req, res) => {
   console.log("Backend: Recebida requisição GET para / (rota de teste)");
-  res
-    .status(200)
-    .json({
-      status: "Server is running",
-      message: "Hello from BioStart Backend!",
-    });
+  res.status(200).json({
+    status: "Server is running",
+    message: "Hello from BioStart Backend!",
+  });
 });
 
 // --- Função auxiliar para cabeçalhos Airtable ---
@@ -96,12 +94,10 @@ app.post("/auth/register-firestore", async (req, res) => {
   } = req.body;
 
   if (!name || !email || !password || !age || !regionCity) {
-    return res
-      .status(400)
-      .json({
-        success: false,
-        error: "Por favor, preencha todos os campos obrigatórios.",
-      });
+    return res.status(400).json({
+      success: false,
+      error: "Por favor, preencha todos os campos obrigatórios.",
+    });
   }
 
   try {
@@ -138,13 +134,11 @@ app.post("/auth/register-firestore", async (req, res) => {
     res.status(200).json({ success: true, recordId: newUserRef.id });
   } catch (error) {
     console.error("Backend: Erro no registo de utilizador (Firestore):", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        error: "Erro ao registar utilizador.",
-        details: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      error: "Erro ao registar utilizador.",
+      details: error.message,
+    });
   }
 });
 
@@ -186,13 +180,11 @@ app.post("/auth/login-firestore", async (req, res) => {
     }
   } catch (error) {
     console.error("Backend: Erro no login de utilizador (Firestore):", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        error: "Erro ao fazer login.",
-        details: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      error: "Erro ao fazer login.",
+      details: error.message,
+    });
   }
 });
 
@@ -243,12 +235,10 @@ app.post("/admin-registro", async (req, res) => {
       "Backend: Erro no registo de administrador:",
       err.response?.data || err.message
     );
-    res
-      .status(500)
-      .send({
-        error: "Erro ao registar administrador",
-        details: err.response?.data || err.message,
-      });
+    res.status(500).send({
+      error: "Erro ao registar administrador",
+      details: err.response?.data || err.message,
+    });
   }
 });
 
@@ -263,26 +253,22 @@ app.post("/admin-login", async (req, res) => {
     );
     if (response.data.records.length > 0) {
       const adminRecord = response.data.records[0];
-      res
-        .status(200)
-        .send({
-          success: true,
-          isAdmin: true,
-          admin: adminRecord.fields,
-          recordId: adminRecord.id,
-        });
+      res.status(200).send({
+        success: true,
+        isAdmin: true,
+        admin: adminRecord.fields,
+        recordId: adminRecord.id,
+      });
     } else {
       res
         .status(401)
         .send({ error: "Credenciais de administrador incorretas." });
     }
   } catch (err) {
-    res
-      .status(500)
-      .send({
-        error: "Erro no login de administrador.",
-        details: err.response?.data || err.message,
-      });
+    res.status(500).send({
+      error: "Erro no login de administrador.",
+      details: err.response?.data || err.message,
+    });
   }
 });
 
@@ -325,12 +311,10 @@ const getFirestoreContent = async (res, tableName, fieldMapping) => {
     res.status(200).json({ success: true, data: mappedData });
   } catch (error) {
     console.error(`Erro ao obter dados de ${tableName} (Firestore):`, error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        error: `Erro ao obter dados de ${tableName} (Firestore).`,
-      });
+    res.status(500).json({
+      success: false,
+      error: `Erro ao obter dados de ${tableName} (Firestore).`,
+    });
   }
 };
 
@@ -357,12 +341,10 @@ const postToFirestore = async (res, tableName, fieldsToPost) => {
     res.status(200).send({ success: true, recordId: docRef.id });
   } catch (error) {
     console.error(`Erro ao criar em ${tableName} (Firestore):`, error);
-    res
-      .status(500)
-      .send({
-        error: `Erro ao criar em ${tableName} (Firestore).`,
-        details: error.message,
-      });
+    res.status(500).send({
+      error: `Erro ao criar em ${tableName} (Firestore).`,
+      details: error.message,
+    });
   }
 };
 
@@ -392,12 +374,10 @@ const patchFirestoreContent = async (res, tableName, id, fieldsToUpdate) => {
     res.status(200).send({ success: true, data: dataToUpdate });
   } catch (error) {
     console.error(`Erro ao atualizar em ${tableName} (Firestore):`, error);
-    res
-      .status(500)
-      .send({
-        error: `Erro ao atualizar em ${tableName} (Firestore).`,
-        details: error.message,
-      });
+    res.status(500).send({
+      error: `Erro ao atualizar em ${tableName} (Firestore).`,
+      details: error.message,
+    });
   }
 };
 
@@ -571,13 +551,11 @@ app.get("/user/:userId/checklist", async (req, res) => {
       .json({ success: true, checklistState: JSON.parse(checklistState) });
   } catch (error) {
     console.error("Erro ao obter estado do checklist (Firestore):", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        error: "Erro ao obter dados do checklist.",
-        details: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      error: "Erro ao obter dados do checklist.",
+      details: error.message,
+    });
   }
 });
 
@@ -591,21 +569,17 @@ app.post("/user/:userId/checklist", async (req, res) => {
       checklistStateJSON: JSON.stringify(checklistState),
       checklistProgress: progress,
     });
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: "Progresso do checklist guardado (Firestore).",
-      });
+    res.status(200).json({
+      success: true,
+      message: "Progresso do checklist guardado (Firestore).",
+    });
   } catch (error) {
     console.error("Erro ao guardar estado do checklist (Firestore):", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        error: "Erro ao guardar progresso do checklist.",
-        details: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      error: "Erro ao guardar progresso do checklist.",
+      details: error.message,
+    });
   }
 });
 
@@ -627,13 +601,11 @@ app.post("/forum/post-question", async (req, res) => {
     res.status(200).json({ success: true, recordId: docRef.id });
   } catch (error) {
     console.error("Erro ao postar pergunta no fórum (Firestore):", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        error: "Erro ao postar pergunta no fórum.",
-        details: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      error: "Erro ao postar pergunta no fórum.",
+      details: error.message,
+    });
   }
 });
 
@@ -649,13 +621,11 @@ app.get("/forum/topics", async (req, res) => {
     res.status(200).json({ success: true, data: topics });
   } catch (error) {
     console.error("Erro ao obter tópicos do fórum (Firestore):", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        error: "Erro ao obter tópicos do fórum.",
-        details: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      error: "Erro ao obter tópicos do fórum.",
+      details: error.message,
+    });
   }
 });
 
@@ -678,13 +648,11 @@ app.post("/user/quiz-score", async (req, res) => {
       .json({ success: true, message: "Pontuação do quiz salva (Firestore)." });
   } catch (error) {
     console.error("Erro ao salvar pontuação do quiz (Firestore):", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        error: "Erro ao salvar pontuação do quiz.",
-        details: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      error: "Erro ao salvar pontuação do quiz.",
+      details: error.message,
+    });
   }
 });
 
